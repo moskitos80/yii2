@@ -1,7 +1,7 @@
 Объекты доступа к данным (DAO)
 ==============================
 
-Построенные поверх [PDO](http://php.net/manual/ru/book.pdo.php), Yii DAO (объекты доступа к данным) обеспечивают
+Построенные поверх [PDO](https://secure.php.net/manual/ru/book.pdo.php), Yii DAO (объекты доступа к данным) обеспечивают
 объектно-ориентированный API для доступа к реляционным базам данных. Это основа для других, более продвинутых, методов
 доступа к базам данных, включая [построитель запросов](db-query-builder.md) и [active record](db-active-record.md).
 
@@ -15,11 +15,14 @@ Yii DAO из коробки поддерживает следующие базы
 - [MySQL](http://www.mysql.com/)
 - [MariaDB](https://mariadb.com/)
 - [SQLite](http://sqlite.org/)
-- [PostgreSQL](http://www.postgresql.org/)
+- [PostgreSQL](http://www.postgresql.org/): версии 8.4 или выше.
 - [CUBRID](http://www.cubrid.org/): версии 9.3 или выше.
 - [Oracle](http://www.oracle.com/us/products/database/overview/index.html)
 - [MSSQL](https://www.microsoft.com/en-us/sqlserver/default.aspx): версии 2008 или выше.
 
+
+> Note: Новая версия pdo_oci для PHP 7 на данный момент существует только в форме исходного кода. Используйте
+  [инструкции сообщества по компиляции](https://github.com/yiisoft/yii2/issues/10975#issuecomment-248479268).
 
 ## Создание подключения к базе данных <span id="creating-db-connections"></span>
 
@@ -59,7 +62,7 @@ return [
 > Tip: Вы можете настроить несколько компонентов подключения, если в вашем приложении используется несколько баз данных.
 
 При настройке подключения, вы должны обязательно указывать Имя Источника Данных (DSN) через параметр [[yii\db\Connection::dsn|dsn]].
-Формат DSN отличается для разных баз данных. Дополнительное описание смотрите в [справочнике PHP](http://php.net/manual/ru/pdo.construct.php).
+Формат DSN отличается для разных баз данных. Дополнительное описание смотрите в [справочнике PHP](https://secure.php.net/manual/ru/pdo.construct.php).
 Ниже представлены несколько примеров:
  
 * MySQL, MariaDB: `mysql:host=localhost;dbname=mydatabase`
@@ -155,7 +158,7 @@ $post = Yii::$app->db->createCommand('SELECT * FROM post WHERE id=:id AND status
 
 * [[yii\db\Command::bindValue()|bindValue()]]: привязка одного параметра по значению 
 * [[yii\db\Command::bindValues()|bindValues()]]: привязка нескольких параметров в одном вызове
-* [[yii\db\Command::bindParam()|bindParam()]]: похоже на [[yii\db\Command::bindValue()|bindValue()]] но привязка
+* [[yii\db\Command::bindParam()|bindParam()]]: похоже на [[yii\db\Command::bindValue()|bindValue()]], но привязка
   происходит по ссылке.
 
 Следующий пример показывает альтернативный путь привязки параметров:
@@ -171,7 +174,7 @@ $post = Yii::$app->db->createCommand('SELECT * FROM post WHERE id=:id AND status
            ->queryOne();
 ```
 
-Привязка переменных реализована через [подготавливаемые запросы](http://php.net/manual/ru/mysqli.quickstart.prepared-statements.php).
+Привязка переменных реализована через [подготавливаемые запросы](https://secure.php.net/manual/ru/mysqli.quickstart.prepared-statements.php).
 Помимо предотвращения атак путём SQL инъекций, это увеличивает производительность, так как запрос подготавливается
 один раз, а потом выполняется много раз с разными параметрами. Например,
 
@@ -326,14 +329,17 @@ try {
     // ... executing other SQL statements ...
     
     $transaction->commit();
-    
 } catch(\Exception $e) {
-
     $transaction->rollBack();
-    
     throw $e;
+} catch(\Throwable $e) {
+    $transaction->rollBack();
 }
 ```
+
+> Note: в коде выше ради совместимости с PHP 5.x и PHP 7.x использованы два блока catch. 
+> `\Exception` реализует интерфейс [`\Throwable` interface](https://secure.php.net/manual/ru/class.throwable.php)
+> начиная с PHP 7.0. Если вы используете только PHP 7 и новее, можете пропустить блок с `\Exception`.
 
 При вызове метода [[yii\db\Connection::beginTransaction()|beginTransaction()]], будет запущена новая транзакция.
 Транзакция представлена объектом [[yii\db\Transaction]] сохранённым в переменной `$transaction`. Потом, запросы будут
@@ -354,7 +360,7 @@ Yii::$app->db->transaction(function ($db) {
     ....
 }, $isolationLevel);
  
-// or alternatively
+// или
 
 $transaction = Yii::$app->db->beginTransaction($isolationLevel);
 ```
@@ -390,10 +396,10 @@ Yii предоставляет четыре константы для наибо
 
 ```php
 Yii::$app->db->transaction(function ($db) {
-    // outer transaction
+    // внешняя транзакция
     
     $db->transaction(function ($db) {
-        // inner transaction
+        // внутренняя транзакция
     });
 });
 ```
@@ -412,11 +418,17 @@ try {
         $innerTransaction->commit();
     } catch (\Exception $e) {
         $innerTransaction->rollBack();
+    } catch (\Throwable $e) {
+        $innerTransaction->rollBack();
+        throw $e;
     }
 
     $outerTransaction->commit();
 } catch (\Exception $e) {
     $outerTransaction->rollBack();
+} catch (\Throwable $e) {
+    $innerTransaction->rollBack();
+    throw $e;
 }
 ```
 
@@ -425,7 +437,7 @@ try {
 
 Многие СУБД поддерживают [репликацию баз данных](http://en.wikipedia.org/wiki/Replication_(computing)#Database_replication)
 для лучшей доступности базы данных и уменьшения времени ответа сервера. С репликацией базы данных, данные копируются
-из *master servers* на *slave servers*. Все вставки и обновления должны происходить на основном сервере, хотя чтение
+из *primary servers* на *replica servers*. Все вставки и обновления должны происходить на основном сервере, хотя чтение
 может производится и с подчинённых серверов.
 
 Чтоб воспользоваться преимуществами репликации и достичь разделения чтения и записи, вам необходимо настроить компонент
@@ -436,13 +448,13 @@ try {
     'class' => 'yii\db\Connection',
 
     // настройки для мастера
-    'dsn' => 'dsn for master server',
-    'username' => 'master',
+    'dsn' => 'dsn for primary server',
+    'username' => 'primary',
     'password' => '',
 
     // общие настройки для подчинённых
-    'slaveConfig' => [
-        'username' => 'slave',
+    'replicaConfig' => [
+        'username' => 'replica',
         'password' => '',
         'attributes' => [
             // используем небольшой таймаут для соединения
@@ -451,11 +463,11 @@ try {
     ],
 
     // список настроек для подчинённых серверов
-    'slaves' => [
-        ['dsn' => 'dsn for slave server 1'],
-        ['dsn' => 'dsn for slave server 2'],
-        ['dsn' => 'dsn for slave server 3'],
-        ['dsn' => 'dsn for slave server 4'],
+    'replicas' => [
+        ['dsn' => 'dsn for replica server 1'],
+        ['dsn' => 'dsn for replica server 2'],
+        ['dsn' => 'dsn for replica server 3'],
+        ['dsn' => 'dsn for replica server 4'],
     ],
 ]
 ```
@@ -477,7 +489,7 @@ Yii::$app->db->createCommand("UPDATE user SET username='demo' WHERE id=1")->exec
 
 > Info: Запросы выполненные через [[yii\db\Command::execute()]] определяются как запросы на запись, а все
   остальные запросы через один из "query" методов [[yii\db\Command]] воспринимаются как запросы на чтение.
-  Вы можете получить текущий статус соединения к подчинённому серверу через `$db->slave`.
+  Вы можете получить текущий статус соединения к подчинённому серверу через `$db->replica`.
 
 Компонент `Connection` поддерживает балансировку нагрузки и переключение при сбое для подчинённых серверов.
 При выполнении первого запроса на чтение, компонент `Connection` будет случайным образом выбирать подчинённый сервер
@@ -497,8 +509,8 @@ Yii::$app->db->createCommand("UPDATE user SET username='demo' WHERE id=1")->exec
     'class' => 'yii\db\Connection',
 
     // общая конфигурация для основных серверов
-    'masterConfig' => [
-        'username' => 'master',
+    'primaryConfig' => [
+        'username' => 'primary',
         'password' => '',
         'attributes' => [
             // используем небольшой таймаут для соединения
@@ -507,14 +519,14 @@ Yii::$app->db->createCommand("UPDATE user SET username='demo' WHERE id=1")->exec
     ],
 
     // список настроек для основных серверов
-    'masters' => [
-        ['dsn' => 'dsn for master server 1'],
-        ['dsn' => 'dsn for master server 2'],
+    'primaries' => [
+        ['dsn' => 'dsn for primary server 1'],
+        ['dsn' => 'dsn for primary server 2'],
     ],
 
     // общие настройки для подчинённых
-    'slaveConfig' => [
-        'username' => 'slave',
+    'replicaConfig' => [
+        'username' => 'replica',
         'password' => '',
         'attributes' => [
             // используем небольшой таймаут для соединения
@@ -523,11 +535,11 @@ Yii::$app->db->createCommand("UPDATE user SET username='demo' WHERE id=1")->exec
     ],
 
     // список настроек для подчинённых серверов
-    'slaves' => [
-        ['dsn' => 'dsn for slave server 1'],
-        ['dsn' => 'dsn for slave server 2'],
-        ['dsn' => 'dsn for slave server 3'],
-        ['dsn' => 'dsn for slave server 4'],
+    'replicas' => [
+        ['dsn' => 'dsn for replica server 1'],
+        ['dsn' => 'dsn for replica server 2'],
+        ['dsn' => 'dsn for replica server 3'],
+        ['dsn' => 'dsn for replica server 4'],
     ],
 ]
 ```
@@ -536,7 +548,7 @@ Yii::$app->db->createCommand("UPDATE user SET username='demo' WHERE id=1")->exec
 балансировку нагрузки и переключение при сбое между основными серверами, также как и между подчинёнными. Различие
 заключается в том, что когда ни к одному из основных серверов не удастся подключиться будет выброшено исключение.
 
-> Note: Когда вы используете свойство [[yii\db\Connection::masters|masters]] для настройки одного или нескольких
+> Note: Когда вы используете свойство [[yii\db\Connection::primaries|primaries]] для настройки одного или нескольких
   основных серверов, все остальные свойства для настройки соединения с базой данных (такие как `dsn`, `username`, `password`)
   будут проигнорированы компонентом `Connection`.
 
@@ -557,25 +569,28 @@ try {
 } catch(\Exception $e) {
     $transaction->rollBack();
     throw $e;
+} catch (\Throwable $e) {
+    $innerTransaction->rollBack();
+    throw $e;
 }
 ```
 
 Если вы хотите запустить транзакцию на подчинённом сервере, вы должны указать это явно, как показано ниже:
 
 ```php
-$transaction = Yii::$app->db->slave->beginTransaction();
+$transaction = Yii::$app->db->replica->beginTransaction();
 ```
 
 Иногда может потребоваться выполнить запрос на чтение через подключение к основному серверу. Это может быть достигнуто
-с использованием метода `useMaster()`:
+с использованием метода `usePrimary()`:
 
 ```php
-$rows = Yii::$app->db->useMaster(function ($db) {
+$rows = Yii::$app->db->usePrimary(function ($db) {
     return $db->createCommand('SELECT * FROM user LIMIT 10')->queryAll();
 });
 ```
 
-Вы также можете явно установить `$db->enableSlaves` в ложь, чтоб направлять все запросы к соединению с мастером.
+Вы также можете явно установить `$db->enableReplicas` в ложь, чтоб направлять все запросы к соединению с мастером.
 
 
 ## Работа со схемой базы данных <span id="database-schema"></span>

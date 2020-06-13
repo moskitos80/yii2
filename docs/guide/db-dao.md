@@ -1,7 +1,7 @@
 Database Access Objects
 =======================
 
-Built on top of [PDO](http://www.php.net/manual/en/book.pdo.php), Yii DAO (Database Access Objects) provides an
+Built on top of [PDO](https://secure.php.net/manual/en/book.pdo.php), Yii DAO (Database Access Objects) provides an
 object-oriented API for accessing relational databases. It is the foundation for other more advanced database
 access methods, including [query builder](db-query-builder.md) and [active record](db-active-record.md).
 
@@ -9,16 +9,19 @@ When using Yii DAO, you mainly need to deal with plain SQLs and PHP arrays. As a
 way to access databases. However, because SQL syntax may vary for different databases, using Yii DAO also means 
 you have to take extra effort to create a database-agnostic application.
 
-Yii DAO supports the following databases out of box:
+In Yii 2.0, DAO supports the following databases out of the box:
 
 - [MySQL](http://www.mysql.com/)
 - [MariaDB](https://mariadb.com/)
 - [SQLite](http://sqlite.org/)
-- [PostgreSQL](http://www.postgresql.org/)
+- [PostgreSQL](http://www.postgresql.org/): version 8.4 or higher
 - [CUBRID](http://www.cubrid.org/): version 9.3 or higher.
 - [Oracle](http://www.oracle.com/us/products/database/overview/index.html)
 - [MSSQL](https://www.microsoft.com/en-us/sqlserver/default.aspx): version 2008 or higher.
 
+> Note: New version of pdo_oci for PHP 7 currently exists only as the source code. Follow
+  [instruction provided by community](https://github.com/yiisoft/yii2/issues/10975#issuecomment-248479268)
+  to compile it or use [PDO emulation layer](https://github.com/taq/pdooci).
 
 ## Creating DB Connections <span id="creating-db-connections"></span>
 
@@ -58,7 +61,7 @@ You can then access the DB connection via the expression `Yii::$app->db`.
 > Tip: You can configure multiple DB application components if your application needs to access multiple databases.
 
 When configuring a DB connection, you should always specify its Data Source Name (DSN) via the [[yii\db\Connection::dsn|dsn]] 
-property. The format of DSN varies for different databases. Please refer to the [PHP manual](http://www.php.net/manual/en/function.PDO-construct.php) 
+property. The format of DSN varies for different databases. Please refer to the [PHP manual](https://secure.php.net/manual/en/function.PDO-construct.php) 
 for more details. Below are some examples:
  
 * MySQL, MariaDB: `mysql:host=localhost;dbname=mydatabase`
@@ -103,6 +106,18 @@ and [[yii\db\Connection::password|password]]. Please refer to [[yii\db\Connectio
 >     }
 > ],
 > ```
+
+For MS SQL Server additional connection option is needed for proper binary data handling:
+
+```php
+'db' => [
+ 'class' => 'yii\db\Connection',
+    'dsn' => 'sqlsrv:Server=localhost;Database=mydatabase',
+    'attributes' => [
+        \PDO::SQLSRV_ATTR_ENCODING => \PDO::SQLSRV_ENCODING_SYSTEM
+    ]
+],
+```
 
 
 ## Executing SQL Queries <span id="executing-sql-queries"></span>
@@ -175,7 +190,7 @@ $post = Yii::$app->db->createCommand('SELECT * FROM post WHERE id=:id AND status
            ->queryOne();
 ```
 
-Parameter binding is implemented via [prepared statements](http://php.net/manual/en/mysqli.quickstart.prepared-statements.php).
+Parameter binding is implemented via [prepared statements](https://secure.php.net/manual/en/mysqli.quickstart.prepared-statements.php).
 Besides preventing SQL injection attacks, it may also improve performance by preparing a SQL statement once and
 executing it multiple times with different parameters. For example,
 
@@ -205,6 +220,11 @@ $post2 = $command->queryOne();
 Notice that you bind the placeholder to the `$id` variable before the execution, and then change the value of that variable 
 before each subsequent execution (this is often done with loops). Executing queries in this manner can be vastly 
 more efficient than running a new query for every different parameter value. 
+
+> Info: Parameter binding is only used in places where values need to be inserted into strings that contain plain SQL.
+> In many places in higher abstraction layers like [query builder](db-query-builder.md) and [active record](db-active-record.md)
+> you often specify an array of values which will be transformed into SQL. In these places parameter binding is done by Yii
+> internally, so there is no need to specify params manually.
 
 
 ### Executing Non-SELECT Queries <span id="non-select-queries"></span>
@@ -248,6 +268,21 @@ Yii::$app->db->createCommand()->batchInsert('user', ['name', 'age'], [
     ['Linda', 25],
 ])->execute();
 ```
+
+Another useful method is [[yii\db\Command::upsert()|upsert()]]. Upsert is an atomic operation that inserts rows into
+a database table if they do not already exist (matching unique constraints), or update them if they do:
+
+```php
+Yii::$app->db->createCommand()->upsert('pages', [
+    'name' => 'Front page',
+    'url' => 'http://example.com/', // url is unique
+    'visits' => 0,
+], [
+    'visits' => new \yii\db\Expression('visits + 1'),
+], $params)->execute();
+```
+
+The code above will either insert a new page record or increment its visit counter atomically.
 
 Note that the aforementioned methods only create the query and you always have to call [[yii\db\Command::execute()|execute()]]
 to actually run them.
@@ -325,18 +360,17 @@ The above code is equivalent to the following, which gives you more control abou
 ```php
 $db = Yii::$app->db;
 $transaction = $db->beginTransaction();
-
 try {
     $db->createCommand($sql1)->execute();
     $db->createCommand($sql2)->execute();
     // ... executing other SQL statements ...
     
     $transaction->commit();
-    
 } catch(\Exception $e) {
-
     $transaction->rollBack();
-    
+    throw $e;
+} catch(\Throwable $e) {
+    $transaction->rollBack();
     throw $e;
 }
 ```
@@ -348,6 +382,10 @@ the [[yii\db\Transaction::commit()|commit()]] method is called to commit the tra
 will be triggered and caught, the [[yii\db\Transaction::rollBack()|rollBack()]] method is called to roll back
 the changes made by the queries prior to that failed query in the transaction. `throw $e` will then re-throw the
 exception as if we had not caught it, so the normal error handling process will take care of it.
+
+> Note: in the above code we have two catch-blocks for compatibility 
+> with PHP 5.x and PHP 7.x. `\Exception` implements the [`\Throwable` interface](https://secure.php.net/manual/en/class.throwable.php)
+> since PHP 7.0, so you can skip the part with `\Exception` if your app uses only PHP 7.0 and higher.
 
 
 ### Specifying Isolation Levels <span id="specifying-isolation-levels"></span>
@@ -375,7 +413,7 @@ Yii provides four constants for the most common isolation levels:
 - [[\yii\db\Transaction::SERIALIZABLE]] - the strongest level, avoids all of the above named problems.
 
 Besides using the above constants to specify isolation levels, you may also use strings with a valid syntax supported
-by the DBMS that you are using. For example, in PostgreSQL, you may use `SERIALIZABLE READ ONLY DEFERRABLE`. 
+by the DBMS that you are using. For example, in PostgreSQL, you may use `"SERIALIZABLE READ ONLY DEFERRABLE"`.
 
 Note that some DBMS allow setting the isolation level only for the whole connection. Any subsequent transactions
 will get the same isolation level even if you do not specify any. When using this feature
@@ -421,10 +459,16 @@ try {
     } catch (\Exception $e) {
         $innerTransaction->rollBack();
         throw $e;
+    } catch (\Throwable $e) {
+        $innerTransaction->rollBack();
+        throw $e;
     }
 
     $outerTransaction->commit();
 } catch (\Exception $e) {
+    $outerTransaction->rollBack();
+    throw $e;
+} catch (\Throwable $e) {
     $outerTransaction->rollBack();
     throw $e;
 }
@@ -435,8 +479,8 @@ try {
 
 Many DBMS support [database replication](http://en.wikipedia.org/wiki/Replication_(computing)#Database_replication)
 to get better database availability and faster server response time. With database replication, data are replicated
-from the so-called *master servers* to *slave servers*. All writes and updates must take place on the master servers,
-while reads may also take place on the slave servers.
+from the so-called *primary servers* to *replica servers*. All writes and updates must take place on the primary servers,
+while reads may also take place on the replica servers.
 
 To take advantage of database replication and achieve read-write splitting, you can configure a [[yii\db\Connection]]
 component like the following:
@@ -445,14 +489,14 @@ component like the following:
 [
     'class' => 'yii\db\Connection',
 
-    // configuration for the master
-    'dsn' => 'dsn for master server',
-    'username' => 'master',
+    // configuration for the primary server
+    'dsn' => 'dsn for primary server',
+    'username' => 'primary',
     'password' => '',
 
-    // common configuration for slaves
-    'slaveConfig' => [
-        'username' => 'slave',
+    // common configuration for replicas
+    'replicaConfig' => [
+        'username' => 'replica',
         'password' => '',
         'attributes' => [
             // use a smaller connection timeout
@@ -460,57 +504,57 @@ component like the following:
         ],
     ],
 
-    // list of slave configurations
-    'slaves' => [
-        ['dsn' => 'dsn for slave server 1'],
-        ['dsn' => 'dsn for slave server 2'],
-        ['dsn' => 'dsn for slave server 3'],
-        ['dsn' => 'dsn for slave server 4'],
+    // list of replica configurations
+    'replicas' => [
+        ['dsn' => 'dsn for replica server 1'],
+        ['dsn' => 'dsn for replica server 2'],
+        ['dsn' => 'dsn for replica server 3'],
+        ['dsn' => 'dsn for replica server 4'],
     ],
 ]
 ```
 
-The above configuration specifies a setup with a single master and multiple slaves. One of the slaves will
-be connected and used to perform read queries, while the master will be used to perform write queries.
+The above configuration specifies a setup with a single primary server and multiple replicas. One of the replicas
+will be connected and used to perform read queries, while the primary server will be used to perform write queries.
 Such read-write splitting is accomplished automatically with this configuration. For example,
 
 ```php
 // create a Connection instance using the above configuration
 Yii::$app->db = Yii::createObject($config);
 
-// query against one of the slaves
+// query against one of the replicas
 $rows = Yii::$app->db->createCommand('SELECT * FROM user LIMIT 10')->queryAll();
 
-// query against the master
+// query against the primary server
 Yii::$app->db->createCommand("UPDATE user SET username='demo' WHERE id=1")->execute();
 ```
 
 > Info: Queries performed by calling [[yii\db\Command::execute()]] are considered as write queries, while
   all other queries done through one of the "query" methods of [[yii\db\Command]] are read queries.
-  You can get the currently active slave connection via `Yii::$app->db->slave`.
+  You can get the currently active replica connection via `Yii::$app->db->replica`.
 
-The `Connection` component supports load balancing and failover between slaves.
-When performing a read query for the first time, the `Connection` component will randomly pick a slave and
-try connecting to it. If the slave is found "dead", it will try another one. If none of the slaves is available,
-it will connect to the master. By configuring a [[yii\db\Connection::serverStatusCache|server status cache]],
+The `Connection` component supports load balancing and failover between replicas.
+When performing a read query for the first time, the `Connection` component will randomly pick a replica and
+try connecting to it. If the replica is found "dead", it will try another one. If none of the replicas are available,
+it will connect to the primary server. By configuring a [[yii\db\Connection::serverStatusCache|server status cache]],
 a "dead" server can be remembered so that it will not be tried again during a
 [[yii\db\Connection::serverRetryInterval|certain period of time]].
 
-> Info: In the above configuration, a connection timeout of 10 seconds is specified for every slave.
-  This means if a slave cannot be reached in 10 seconds, it is considered as "dead". You can adjust this parameter
+> Info: In the above configuration, a connection timeout of 10 seconds is specified for every replica.
+  This means if a replica cannot be reached in 10 seconds, it is considered as "dead". You can adjust this parameter
   based on your actual environment.
 
 
-You can also configure multiple masters with multiple slaves. For example,
+You can also configure multiple primary servers with multiple replicas. For example,
 
 
 ```php
 [
     'class' => 'yii\db\Connection',
 
-    // common configuration for masters
-    'masterConfig' => [
-        'username' => 'master',
+    // common configuration for primary servers
+    'primaryConfig' => [
+        'username' => 'primary',
         'password' => '',
         'attributes' => [
             // use a smaller connection timeout
@@ -518,15 +562,15 @@ You can also configure multiple masters with multiple slaves. For example,
         ],
     ],
 
-    // list of master configurations
-    'masters' => [
-        ['dsn' => 'dsn for master server 1'],
-        ['dsn' => 'dsn for master server 2'],
+    // list of primary server configurations
+    'primaries' => [
+        ['dsn' => 'dsn for primary server 1'],
+        ['dsn' => 'dsn for primary server 2'],
     ],
 
-    // common configuration for slaves
-    'slaveConfig' => [
-        'username' => 'slave',
+    // common configuration for replicas
+    'replicaConfig' => [
+        'username' => 'replica',
         'password' => '',
         'attributes' => [
             // use a smaller connection timeout
@@ -534,35 +578,35 @@ You can also configure multiple masters with multiple slaves. For example,
         ],
     ],
 
-    // list of slave configurations
-    'slaves' => [
-        ['dsn' => 'dsn for slave server 1'],
-        ['dsn' => 'dsn for slave server 2'],
-        ['dsn' => 'dsn for slave server 3'],
-        ['dsn' => 'dsn for slave server 4'],
+    // list of replica configurations
+    'replicas' => [
+        ['dsn' => 'dsn for replica server 1'],
+        ['dsn' => 'dsn for replica server 2'],
+        ['dsn' => 'dsn for replica server 3'],
+        ['dsn' => 'dsn for replica server 4'],
     ],
 ]
 ```
 
-The above configuration specifies two masters and four slaves. The `Connection` component also supports
-load balancing and failover between masters just as it does between slaves. A difference is that when none 
-of the masters are available an exception will be thrown.
+The above configuration specifies two primary servers and four replicas. The `Connection` component also supports
+load balancing and failover between primary servers just as it does between replicas. A difference is that when none 
+of the primary servers are available, an exception will be thrown.
 
-> Note: When you use the [[yii\db\Connection::masters|masters]] property to configure one or multiple
-  masters, all other properties for specifying a database connection (e.g. `dsn`, `username`, `password`)
+> Note: When you use the [[yii\db\Connection::primaries|primaries]] property to configure one or multiple
+  primary servers, all other properties for specifying a database connection (e.g. `dsn`, `username`, `password`)
   with the `Connection` object itself will be ignored.
 
 
-By default, transactions use the master connection. And within a transaction, all DB operations will use
-the master connection. For example,
+By default, transactions use the primary connection. And within a transaction, all DB operations will use
+the primary connection. For example,
 
 ```php
 $db = Yii::$app->db;
-// the transaction is started on the master connection
+// the transaction is started on the primary server
 $transaction = $db->beginTransaction();
 
 try {
-    // both queries are performed against the master
+    // both queries are performed against the primary server
     $rows = $db->createCommand('SELECT * FROM user LIMIT 10')->queryAll();
     $db->createCommand("UPDATE user SET username='demo' WHERE id=1")->execute();
 
@@ -570,25 +614,28 @@ try {
 } catch(\Exception $e) {
     $transaction->rollBack();
     throw $e;
+} catch(\Throwable $e) {
+    $transaction->rollBack();
+    throw $e;
 }
 ```
 
-If you want to start a transaction with the slave connection, you should explicitly do so, like the following:
+If you want to start a transaction with a replica, you should explicitly do so, like the following:
 
 ```php
-$transaction = Yii::$app->db->slave->beginTransaction();
+$transaction = Yii::$app->db->replica->beginTransaction();
 ```
 
-Sometimes, you may want to force using the master connection to perform a read query. This can be achieved
-with the `useMaster()` method:
+Sometimes, you may want to force using the primary server to perform a read query. This can be achieved
+with the `usePrimary()` method:
 
 ```php
-$rows = Yii::$app->db->useMaster(function ($db) {
+$rows = Yii::$app->db->usePrimary(function ($db) {
     return $db->createCommand('SELECT * FROM user LIMIT 10')->queryAll();
 });
 ```
 
-You may also directly set `Yii::$app->db->enableSlaves` to be false to direct all queries to the master connection.
+You may also directly set `Yii::$app->db->enableReplicas` to be `false` to direct all queries to the primary server.
 
 
 ## Working with Database Schema <span id="database-schema"></span>

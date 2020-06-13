@@ -30,8 +30,8 @@ use yii\db\BaseActiveRecord;
  * when the associated AR object is being inserted; it will fill the `updated_at` attribute
  * with the timestamp when the AR object is being updated. The timestamp value is obtained by `time()`.
  *
- * Because attribute values will be set automatically, it's a good idea to make sure `created_at` and `updated_at` aren't
- * in `rules()` method of the model.
+ * Because attribute values will be set automatically by this behavior, they are usually not user input and should therefore
+ * not be validated, i.e. `created_at` and `updated_at` should not appear in the [[\yii\base\Model::rules()|rules()]] method of the model.
  *
  * For the above implementation to work with MySQL database, please declare the columns(`created_at`, `updated_at`) as int(11) for being UNIX timestamp.
  *
@@ -82,16 +82,16 @@ class TimestampBehavior extends AttributeBehavior
      */
     public $updatedAtAttribute = 'updated_at';
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      *
-     * In case, when the value is `null`, the result of the PHP function [time()](http://php.net/manual/en/function.time.php)
+     * In case, when the value is `null`, the result of the PHP function [time()](https://secure.php.net/manual/en/function.time.php)
      * will be used as value.
      */
     public $value;
 
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      */
     public function init()
     {
@@ -106,9 +106,9 @@ class TimestampBehavior extends AttributeBehavior
     }
 
     /**
-     * @inheritdoc
+     * {@inheritdoc}
      *
-     * In case, when the [[value]] is `null`, the result of the PHP function [time()](http://php.net/manual/en/function.time.php)
+     * In case, when the [[value]] is `null`, the result of the PHP function [time()](https://secure.php.net/manual/en/function.time.php)
      * will be used as value.
      */
     protected function getValue($event)
@@ -116,6 +116,7 @@ class TimestampBehavior extends AttributeBehavior
         if ($this->value === null) {
             return time();
         }
+
         return parent::getValue($event);
     }
 
